@@ -3,7 +3,12 @@ import { createHash, randomBytes } from 'crypto'
 import dotenv from 'dotenv'
 dotenv.config()
 
-const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL })
+const pool = new pg.Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.DATABASE_URL?.includes('localhost') || process.env.DATABASE_URL?.includes('127.0.0.1')
+    ? false
+    : { rejectUnauthorized: false }
+})
 
 // ── Startup migrations — idempotent ──────────────────────────────
 async function runMigrations() {
