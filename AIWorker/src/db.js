@@ -119,7 +119,12 @@ async function runMigrations() {
         ADD COLUMN IF NOT EXISTS custom_agents    JSONB         DEFAULT '[]',
         ADD COLUMN IF NOT EXISTS agent_overrides  JSONB         DEFAULT '{}',
         ADD COLUMN IF NOT EXISTS business_name    VARCHAR(100),
-        ADD COLUMN IF NOT EXISTS business_logo    TEXT
+        ADD COLUMN IF NOT EXISTS business_logo    TEXT,
+        ADD COLUMN IF NOT EXISTS admin_phone      TEXT,
+        ADD COLUMN IF NOT EXISTS redirect_phone   TEXT,
+        ADD COLUMN IF NOT EXISTS allowed_phones   TEXT[]        DEFAULT '{}',
+        ADD COLUMN IF NOT EXISTS advisors         JSONB         DEFAULT '[]',
+        ADD COLUMN IF NOT EXISTS business_hours   JSONB         DEFAULT '{}'
     `)
     await pool.query(`
       CREATE TABLE IF NOT EXISTS users (
@@ -165,7 +170,9 @@ async function runMigrations() {
         ADD COLUMN IF NOT EXISTS bot_paused     BOOLEAN DEFAULT false
     `)
     await pool.query(`
-      ALTER TABLE messages ADD COLUMN IF NOT EXISTS media_url TEXT
+      ALTER TABLE messages
+        ADD COLUMN IF NOT EXISTS media_url TEXT,
+        ADD COLUMN IF NOT EXISTS agent_type TEXT
     `)
     await pool.query(`
       ALTER TABLE messages DROP CONSTRAINT IF EXISTS messages_sender_check
