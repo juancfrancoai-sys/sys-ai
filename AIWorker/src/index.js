@@ -764,18 +764,30 @@ Respondé en español rioplatense, mensajes cortos y claros. Sé amigable pero d
     try {
       const { message } = await parseBody(req)
       const convId = parseInt(convSendMatch[1])
+      console.log(`[Manual Send] Solicitud recibida. convId=${convId}, mensaje="${message?.substring(0, 30)}"`)
       if (!message?.trim()) return json(res, { error: 'Mensaje vacío' }, 400)
-      if (!activeSock || connectionStatus !== 'connected') return json(res, { error: 'WhatsApp no conectado' }, 503)
+      if (!activeSock || connectionStatus !== 'connected') {
+        console.error(`[Manual Send] Error: activeSock=${!!activeSock}, connectionStatus=${connectionStatus}`)
+        return json(res, { error: 'WhatsApp no conectado' }, 503)
+      }
       const conv = await db.getConversationWithContact(convId)
-      if (!conv) return json(res, { error: 'Conversación no encontrada' }, 404)
+      if (!conv) {
+        console.error(`[Manual Send] Error: Conversación ${convId} no encontrada en DB`)
+        return json(res, { error: 'Conversación no encontrada' }, 404)
+      }
       const isLid = conv.phone.length >= 14 && !conv.phone.startsWith('549');
       const targetJid = isLid ? `${conv.phone}@lid` : `${conv.phone}@s.whatsapp.net`
-      await activeSock.sendMessage(targetJid, { text: message.trim() })
+      console.log(`[Manual Send] Enviando a targetJid=${targetJid} (isLid=${isLid})`)
+      const resSend = await activeSock.sendMessage(targetJid, { text: message.trim() })
+      console.log(`[Manual Send] Mensaje despachado con éxito por Baileys. JID=${targetJid}, ID mensaje=${resSend?.key?.id}`)
       await db.saveMessage(convId, 'human', message.trim(), 'human')
       await db.logActivity(authUser.id, authUser.username, 'mensaje_manual', { convId, phone: conv.phone, preview: message.substring(0, 50) })
       await createAndPushNotif('human_msg', 'Mensaje manual enviado', `${authUser.name || authUser.username} → ${conv.name || conv.phone}: "${message.substring(0, 50)}"`, { convId, phone: conv.phone })
       return json(res, { ok: true })
-    } catch (err) { return json(res, { error: err.message }, 500) }
+    } catch (err) {
+      console.error(`[Manual Send] Error grave al enviar:`, err.message, err.stack)
+      return json(res, { error: err.message }, 500)
+    }
   }
 
   // POST /api/conversations/:id/pause
