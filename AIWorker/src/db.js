@@ -2,6 +2,7 @@ import pg from 'pg'
 import { createHash, randomBytes } from 'crypto'
 import dotenv from 'dotenv'
 dotenv.config()
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'
 
 const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL,

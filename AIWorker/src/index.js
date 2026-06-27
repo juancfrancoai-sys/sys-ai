@@ -12,6 +12,7 @@ import { getAIReply } from './ai.js'
 import { sendAdminAlert, setAdminSocket } from './alerts.js'
 
 dotenv.config()
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'
 
 let messageCount = 0
 let restartCount = 0
