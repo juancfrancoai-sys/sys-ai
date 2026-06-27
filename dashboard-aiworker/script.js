@@ -2054,8 +2054,13 @@ function toast(msg, type = 'ok') {
 const DEFAULT_WORKER_URL = 'https://sys-ai-a09h.onrender.com'
 
 ;(async () => {
-  // Always use saved URL or default — skip step1 on first visit
-  API = localStorage.getItem('aw_url') || DEFAULT_WORKER_URL
+  // Migration for old saved URL
+  let savedUrl = localStorage.getItem('aw_url')
+  if (savedUrl === 'https://edifica-agent.onrender.com') {
+    localStorage.removeItem('aw_url')
+    savedUrl = null
+  }
+  API = savedUrl || DEFAULT_WORKER_URL
   KEY = localStorage.getItem('aw_key') || ''
   if (!localStorage.getItem('aw_url')) localStorage.setItem('aw_url', DEFAULT_WORKER_URL)
 
