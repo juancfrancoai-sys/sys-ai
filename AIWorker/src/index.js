@@ -55,6 +55,7 @@ async function connectToWhatsApp() {
     markOnlineOnConnect: false,
     syncFullHistory: false,
     generateHighQualityLinkPreview: true,
+    browser: ['Windows', 'Chrome', '10.0.0'],
     getMessage: async (key) => {
       return { conversation: 'Mensaje desencriptado' }
     },
