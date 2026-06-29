@@ -113,6 +113,25 @@ async function connectToWhatsApp() {
         'Worker conectado y funcionando.\n' +
         `Hora: ${new Date().toLocaleString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' })}`
       )
+
+      // ── Watchdog de init queries ──────────────────────────────────────
+      // Si 'chats.set' no llega en 90s, significa que executeInitQueries
+      // falló silenciosamente y el envío de mensajes quedará roto.
+      // Forzamos una reconexión limpia para restaurar la capacidad de envío.
+      let initCompleted = false
+      const initWatchdog = setTimeout(() => {
+        if (!initCompleted && connectionStatus === 'connected') {
+          console.log('[Init] Init queries no completadas en 90s — forzando reconexión para restaurar envío...')
+          connectionStatus = 'disconnected'
+          try { sock.ws?.close() } catch (_) {}
+          setTimeout(connectToWhatsApp, 3000)
+        }
+      }, 90000)
+      sock.ev.once('chats.set', () => {
+        initCompleted = true
+        clearTimeout(initWatchdog)
+        console.log('[Init] Init queries completadas exitosamente ✓')
+      })
     }
   })
 
@@ -156,12 +175,11 @@ async function connectToWhatsApp() {
       const ADMIN    = settings?.admin_phone    || process.env.ADMIN_PHONE    || '5493516002716'
       const REDIRECT = settings?.redirect_phone || process.env.REDIRECT_PHONE || '5493516002716'
 
-      // ── Chequeo de admin: comparación directa por teléfono y por LID guardado ───
-      // Los LIDs de WhatsApp son identificadores internos aleatorios que NO se
-      // relacionan con el número de teléfono. Necesitamos el LID exacto guardado.
-      const ADMIN_LID = settings?.admin_lid || process.env.ADMIN_LID || ''
-      const isAdmin   = identifier === ADMIN
-        || (ADMIN_LID && identifier === ADMIN_LID)
+      // ── Chequeo de admin: solo comparación directa por teléfono ─────────
+      // Los LIDs de WhatsApp NO se relacionan con el número de teléfono.
+      // Para probar el bot con tu propio número, no setear ADMIN_PHONE
+      // con ese número. Si querés bloquear tu número, usá la blacklist.
+      const isAdmin = (ADMIN && identifier === ADMIN)
       if (isAdmin) {
         console.log(`[SKIP] Mensaje del admin (${identifier}) — ignorado`)
         continue
