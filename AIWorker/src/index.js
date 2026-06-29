@@ -156,28 +156,12 @@ async function connectToWhatsApp() {
       const ADMIN    = settings?.admin_phone    || process.env.ADMIN_PHONE    || '5493516002716'
       const REDIRECT = settings?.redirect_phone || process.env.REDIRECT_PHONE || '5493516002716'
 
-      // ── Chequeo de admin robusto ──────────────────────────────────────
-      // WhatsApp puede usar el número real (e.g. 5493516002716) o un LID interno
-      // (e.g. 163745644994777). Normalizamos los últimos 10 dígitos para comparar.
-      function normalizePhone(p) {
-        return String(p || '').replace(/\D/g, '').slice(-10)
-      }
-      const ADMIN_LID  = settings?.admin_lid || ''
-      const adminNorm  = normalizePhone(ADMIN)
-      const identNorm  = normalizePhone(identifier)
-      // También verificar si este LID está mapeado a algún número que coincida con el admin
-      const mappedPhone = lidPhoneMap.get(identifier)
-      const mappedNorm  = normalizePhone(mappedPhone || '')
-      const isAdmin = identifier === ADMIN
+      // ── Chequeo de admin: comparación directa por teléfono y por LID guardado ───
+      // Los LIDs de WhatsApp son identificadores internos aleatorios que NO se
+      // relacionan con el número de teléfono. Necesitamos el LID exacto guardado.
+      const ADMIN_LID = settings?.admin_lid || process.env.ADMIN_LID || ''
+      const isAdmin   = identifier === ADMIN
         || (ADMIN_LID && identifier === ADMIN_LID)
-        || (identNorm === adminNorm && adminNorm.length >= 8)
-        || (mappedNorm === adminNorm && adminNorm.length >= 8)
-      // Auto-aprender LID del admin: si coincide por dígitos pero usó LID, guardarlo
-      if (isLid && !ADMIN_LID && adminNorm.length >= 8 && identNorm === adminNorm) {
-        db.updateAISettings({ admin_lid: identifier }).catch(() => {})
-        lidPhoneMap.set(identifier, ADMIN)
-        console.log(`[ADMIN LID] Aprendido automáticamente: LID ${identifier} → ${ADMIN}`)
-      }
       if (isAdmin) {
         console.log(`[SKIP] Mensaje del admin (${identifier}) — ignorado`)
         continue
