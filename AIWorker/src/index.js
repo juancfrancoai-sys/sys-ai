@@ -127,11 +127,14 @@ async function connectToWhatsApp() {
           setTimeout(connectToWhatsApp, 3000)
         }
       }, 90000)
-      sock.ev.once('chats.set', () => {
+      // sock.ev en Baileys v6 no expone .once(), usar .on() con auto-limpieza
+      const onChatsSet = () => {
         initCompleted = true
         clearTimeout(initWatchdog)
         console.log('[Init] Init queries completadas exitosamente ✓')
-      })
+        try { sock.ev.off('chats.set', onChatsSet) } catch (_) {}
+      }
+      sock.ev.on('chats.set', onChatsSet)
     }
   })
 
