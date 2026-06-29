@@ -124,7 +124,8 @@ async function runMigrations() {
         ADD COLUMN IF NOT EXISTS redirect_phone   TEXT,
         ADD COLUMN IF NOT EXISTS allowed_phones   TEXT[]        DEFAULT '{}',
         ADD COLUMN IF NOT EXISTS advisors         JSONB         DEFAULT '[]',
-        ADD COLUMN IF NOT EXISTS business_hours   JSONB         DEFAULT '{}'
+        ADD COLUMN IF NOT EXISTS business_hours   JSONB         DEFAULT '{}',
+        ADD COLUMN IF NOT EXISTS admin_lid        TEXT
     `)
     await pool.query(`
       CREATE TABLE IF NOT EXISTS users (

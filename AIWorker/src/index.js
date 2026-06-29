@@ -21,6 +21,11 @@ let latestQR = null
 let connectionStatus = 'disconnected'  // 'disconnected' | 'qr' | 'connected' | 'logged_out'
 let activeSock = null  // exposed for manual send + recontacto
 const notifClients = new Set()  // SSE clients for live notifications
+// LID ↔ phone mapping (populated at runtime when messages arrive)
+// key: LID string (e.g. "163745644994777"), value: phone string (e.g. "5493516002716")
+// and vice-versa for reverse lookup
+const lidPhoneMap = new Map()
+
 
 // ── Log capture para SSE ──────────────────────────────────────────────
 const LOG_BUFFER_SIZE = 300
@@ -136,12 +141,47 @@ async function connectToWhatsApp() {
 
       console.log(`[MSG] jid=${jid} id=${identifier} lid=${isLid} name=${msg.pushName}`)
 
+      // ── LID ↔ Phone mapping en memoria ───────────────────────────────
+      // Cuando llega un JID de número de teléfono, guardamos la relación
+      // para poder identificar al admin aunque WhatsApp cambie a su LID.
+      if (isPhone) {
+        // Si antes vimos un LID para este número, actualizar el mapa
+        lidPhoneMap.set(identifier, identifier)  // phone → phone (identidad)
+      }
+      // Enriquecer con pushName para diagnóstico
+      if (msg.pushName) lidPhoneMap.set(`name:${identifier}`, msg.pushName)
+
       // Leer config de BD (teléfonos se gestionan desde el dashboard, no variables de entorno)
       const settings = await db.getAISettings().catch(() => null)
       const ADMIN    = settings?.admin_phone    || process.env.ADMIN_PHONE    || '5493516002716'
       const REDIRECT = settings?.redirect_phone || process.env.REDIRECT_PHONE || '5493516002716'
 
-      if (identifier === ADMIN) continue
+      // ── Chequeo de admin robusto ──────────────────────────────────────
+      // WhatsApp puede usar el número real (e.g. 5493516002716) o un LID interno
+      // (e.g. 163745644994777). Normalizamos los últimos 10 dígitos para comparar.
+      function normalizePhone(p) {
+        return String(p || '').replace(/\D/g, '').slice(-10)
+      }
+      const ADMIN_LID  = settings?.admin_lid || ''
+      const adminNorm  = normalizePhone(ADMIN)
+      const identNorm  = normalizePhone(identifier)
+      // También verificar si este LID está mapeado a algún número que coincida con el admin
+      const mappedPhone = lidPhoneMap.get(identifier)
+      const mappedNorm  = normalizePhone(mappedPhone || '')
+      const isAdmin = identifier === ADMIN
+        || (ADMIN_LID && identifier === ADMIN_LID)
+        || (identNorm === adminNorm && adminNorm.length >= 8)
+        || (mappedNorm === adminNorm && adminNorm.length >= 8)
+      // Auto-aprender LID del admin: si coincide por dígitos pero usó LID, guardarlo
+      if (isLid && !ADMIN_LID && adminNorm.length >= 8 && identNorm === adminNorm) {
+        db.updateAISettings({ admin_lid: identifier }).catch(() => {})
+        lidPhoneMap.set(identifier, ADMIN)
+        console.log(`[ADMIN LID] Aprendido automáticamente: LID ${identifier} → ${ADMIN}`)
+      }
+      if (isAdmin) {
+        console.log(`[SKIP] Mensaje del admin (${identifier}) — ignorado`)
+        continue
+      }
 
       // Blacklist global (nadie puede chatear)
       if (settings?.blacklist_all) {
