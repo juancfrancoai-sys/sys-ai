@@ -14,6 +14,19 @@ import { sendAdminAlert, setAdminSocket } from './alerts.js'
 dotenv.config()
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'
 
+// ── Manejo global de excepciones no capturadas ─────────────────────────
+// Baileys v6 puede lanzar rechazos no manejados en operaciones internas
+// (uploadPreKeysToServerIfRequired, etc.) que crashean el proceso en Node 20.
+// Los capturamos aquí para que el servidor no muera silenciosamente.
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[UnhandledRejection] Promesa rechazada sin capturar:', reason?.message || reason)
+})
+process.on('uncaughtException', (err) => {
+  console.error('[UncaughtException] Excepción no capturada:', err?.message || err)
+  // No terminar el proceso: Baileys maneja sus propias reconexiones
+})
+
+
 let messageCount = 0
 let restartCount = 0
 const startTime = Date.now()
@@ -61,8 +74,13 @@ async function connectToWhatsApp() {
     syncFullHistory: false,
     generateHighQualityLinkPreview: true,
     browser: ['Windows', 'Chrome', '10.0.0'],
-    defaultQueryTimeoutMs: 60000,
+    // defaultQueryTimeoutMs: undefined = sin timeout para las queries internas.
+    // En Render free tier, fetchProps y uploadPreKeysToServerIfRequired pueden
+    // tardar más de 60s. Con timeout finito el proceso crashea; con undefined
+    // esperan hasta completar naturalmente.
+    defaultQueryTimeoutMs: undefined,
     connectTimeoutMs: 60000,
+
     getMessage: async (key) => {
       return { conversation: 'Mensaje desencriptado' }
     },
@@ -113,28 +131,6 @@ async function connectToWhatsApp() {
         'Worker conectado y funcionando.\n' +
         `Hora: ${new Date().toLocaleString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' })}`
       )
-
-      // ── Watchdog de init queries ──────────────────────────────────────
-      // Si 'chats.set' no llega en 90s, significa que executeInitQueries
-      // falló silenciosamente y el envío de mensajes quedará roto.
-      // Forzamos una reconexión limpia para restaurar la capacidad de envío.
-      let initCompleted = false
-      const initWatchdog = setTimeout(() => {
-        if (!initCompleted && connectionStatus === 'connected') {
-          console.log('[Init] Init queries no completadas en 90s — forzando reconexión para restaurar envío...')
-          connectionStatus = 'disconnected'
-          try { sock.ws?.close() } catch (_) {}
-          setTimeout(connectToWhatsApp, 3000)
-        }
-      }, 90000)
-      // sock.ev en Baileys v6 no expone .once(), usar .on() con auto-limpieza
-      const onChatsSet = () => {
-        initCompleted = true
-        clearTimeout(initWatchdog)
-        console.log('[Init] Init queries completadas exitosamente ✓')
-        try { sock.ev.off('chats.set', onChatsSet) } catch (_) {}
-      }
-      sock.ev.on('chats.set', onChatsSet)
     }
   })
 
