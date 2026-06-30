@@ -73,13 +73,10 @@ async function connectToWhatsApp() {
     markOnlineOnConnect: false,
     syncFullHistory: false,
     generateHighQualityLinkPreview: true,
-    browser: ['Windows', 'Chrome', '10.0.0'],
-    // defaultQueryTimeoutMs: undefined = sin timeout para las queries internas.
-    // En Render free tier, fetchProps y uploadPreKeysToServerIfRequired pueden
-    // tardar más de 60s. Con timeout finito el proceso crashea; con undefined
-    // esperan hasta completar naturalmente.
-    defaultQueryTimeoutMs: undefined,
+    browser: ['Ubuntu', 'Chrome', '115.0.0'],
+    defaultQueryTimeoutMs: 300000,
     connectTimeoutMs: 60000,
+
 
     getMessage: async (key) => {
       return { conversation: 'Mensaje desencriptado' }
@@ -131,11 +128,47 @@ async function connectToWhatsApp() {
         'Worker conectado y funcionando.\n' +
         `Hora: ${new Date().toLocaleString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' })}`
       )
+
+      // ── Watchdog de init queries (arreglado) ─────────────────────────
+      // Si 'chats.set' no llega, el socket queda zombie.
+      // Cerramos el socket con error para que Baileys emita 'close' y 
+      // nuestro propio connection.update maneje la reconexión limpiamente
+      // sin crear múltiples instancias (lo que causaba el error 440).
+      global.initCompleted = false
+      const initWatchdog = setTimeout(() => {
+        if (!global.initCompleted && connectionStatus === 'connected') {
+          console.log('[Init] Init queries no completadas en 120s — forzando reconexión limpia...')
+          connectionStatus = 'disconnected'
+          try { sock.end(new Error('Init queries timeout')) } catch (_) {}
+        }
+      }, 120000)
+
+      const onChatsSet = () => {
+        global.initCompleted = true
+        clearTimeout(initWatchdog)
+        console.log('[Init] Init queries completadas exitosamente ✓')
+        try { sock.ev.off('chats.set', onChatsSet) } catch (_) {}
+      }
+      sock.ev.on('chats.set', onChatsSet)
     }
   })
 
   sock.ev.on('messages.upsert', async ({ messages, type }) => {
     if (type !== 'notify') return
+
+    // Esperar a que initCompleted sea true para no procesar mensajes en estado zombie
+    if (!global.initCompleted) {
+      console.log('[MSG] Mensaje recibido pero init no completó, encolando procesamiento...')
+      await new Promise(resolve => {
+        const check = setInterval(() => {
+          if (global.initCompleted || connectionStatus !== 'connected') {
+            clearInterval(check)
+            resolve()
+          }
+        }, 500)
+      })
+      if (connectionStatus !== 'connected') return // Si se desconectó mientras esperábamos, abortar
+    }
 
     for (const msg of messages) {
       if (msg.key.fromMe) continue          // saltar propios
